@@ -1,8 +1,8 @@
 import { db } from "@/db";
-import { meetings } from "@/db/schema";
+import { agents, meetings } from "@/db/schema";
 import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
 import { z } from "zod";
-import { and, desc, eq, ilike, count } from "drizzle-orm";
+import { and, desc, eq, ilike, count, getTableColumns, sql } from "drizzle-orm";
 import {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
@@ -86,31 +86,42 @@ export const meetingsRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { search, page, pageSize } = input;
-
-      const filters = [
-        eq(meetings.userId, ctx.auth.user.id),
-        ...(search ? [ilike(meetings.name, `%${search}%`)] : []),
-      ];
-
-      const items = await db
-        .select()
+      const data = await db
+        .select({
+          ...getTableColumns(meetings),
+          agent: agents,
+          duration:
+            sql<number>`EXTRACT( EPOCH from (ended_at - started_at))`.as(
+              "duration"
+            ),
+        })
         .from(meetings)
-        .where(and(...filters))
+        .innerJoin(agents, eq(meetings.agentId, agents.id))
+        .where(
+          and(
+            eq(meetings.userId, ctx.auth.session.userId),
+            search ? ilike(meetings.name, `%${search}%`) : undefined
+          )
+        )
         .orderBy(desc(meetings.createdAt), desc(meetings.id))
         .limit(pageSize)
         .offset((page - 1) * pageSize);
 
-      const [totalResult] = await db
+      const [total] = await db
         .select({ count: count() })
         .from(meetings)
-        .where(and(...filters));
+        .innerJoin(agents, eq(meetings.agentId, agents.id))
 
-      const total = Number(totalResult.count);
-      const totalPages = Math.ceil(total / pageSize);
-
+        .where(
+          and(
+            eq(meetings.userId, ctx.auth.session.userId),
+            search ? ilike(meetings.name, `%${search}%`) : undefined
+          )
+        );
+      const totalPages = Math.ceil(total.count / pageSize);
       return {
-        items,
-        total,
+        items: data,
+        total: total.count,
         totalPages,
       };
     }),
