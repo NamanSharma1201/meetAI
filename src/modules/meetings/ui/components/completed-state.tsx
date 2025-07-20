@@ -15,7 +15,8 @@ import Link from "next/link";
 import GeneratedAvatar from "@/components/generated-avatar";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-
+import { Transcript } from "./transcript";
+import { ChatProvider } from "./chat-provider";
 interface Props {
   data: MeetingGetOne;
 }
@@ -58,6 +59,12 @@ export const CompletedState = ({ data }: Props) => {
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </div>
+        <TabsContent value="chat">
+          <ChatProvider meetingId={data.id} meetingName={data.name} />
+        </TabsContent>
+        <TabsContent value="transcript">
+          <Transcript meetingId={data.id} />
+        </TabsContent>
         <TabsContent value="recording">
           <div className="bg-white rounded-lg border px-4 py-5">
             <video
