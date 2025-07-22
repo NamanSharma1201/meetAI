@@ -14,6 +14,26 @@ import {
 } from "@stream-io/node-sdk";
 import { and, eq, not } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+type MessageRole = "system" | "user" | "assistant" | "tool";
+
+interface ChatMessage {
+  role: MessageRole;
+  content: string;
+}
+
+function combineConsecutiveMessages(messages: ChatMessage[]): ChatMessage[] {
+  if (!messages.length) return [];
+  const result: ChatMessage[] = [messages[0]];
+  for (let i = 1; i < messages.length; i++) {
+    if (messages[i].role === result[result.length - 1].role) {
+      result[result.length - 1].content += "\n" + messages[i].content;
+    } else {
+      result.push(messages[i]);
+    }
+  }
+  return result;
+}
+
 async function askPerplexity({
   messages,
   instructions,
@@ -23,10 +43,12 @@ async function askPerplexity({
 }): Promise<{ content: string }> {
   const apiKey = process.env.PERPLEXITY_API_KEY!;
   if (!apiKey) throw new Error("Missing Perplexity API Key!");
-
   const reqBody = {
-    model: "sonar-pro",
-    messages: [{ role: "system", content: instructions }, ...messages],
+    model: "sonar",
+    messages: [
+      { role: "system", content: instructions },
+      ...combineConsecutiveMessages(messages),
+    ],
     max_tokens: 1500,
     temperature: 0.5,
   };
@@ -40,6 +62,7 @@ async function askPerplexity({
     body: JSON.stringify(reqBody),
   });
 
+  // console.log(res);
   if (!res.ok) {
     throw new Error(`Perplexity API error: ${res.status} ${await res.text()}`);
   }
@@ -259,6 +282,7 @@ export async function POST(req: NextRequest) {
           role: message.user?.id === existingAgent.id ? "assistant" : "user",
           content: message.text || "",
         }));
+      // console.log(previousMessages);
 
       const perplexityResponse = await askPerplexity({
         messages: previousMessages,
